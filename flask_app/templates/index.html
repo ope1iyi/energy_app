@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <title>Energy Analytics</title>
+</head>
+<body>
+    <nav>
+        <h1>Energy Analytics</h1>
+        <form method="POST" class="navbar-form" enctype="multipart/form-data">
+
+            <label for="file">
+                Choose file
+                <input type="file" name="file" id="file" value="upload"><br/>
+            </label>
+            <button type="submit" class="btn"> Process Analytics</button>
+
+        </form>
+    </nav>
+
+    <div class="overview">
+        {% if intro %}
+            {{ intro|safe }}
+        {% endif %}
+    </div>
+
+    <div class="head-table">
+        {% if result %}
+            <h2>Result is ready</h2>
+        <div>
+            <h3>The first five rows of the data</h3>
+            {{ result|safe }}
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="energy-table">
+        {% if energy_summary %}
+            {{ energy_summary|safe  }}
+        {% endif %}
+    </div>
+</body>
+</html>

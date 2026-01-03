@@ -1,0 +1,20 @@
+#ignore datasets
+datasets/
+uploads/
+*.csv
+*.xls
+*.xlsx
+*.json
+
+#python cache
+__pycache__/
+*.pyc
+
+# virtual environment
+venv/
+.venv
+.env
+
+#os files
+.DS_Store
+Thumbs.db
