@@ -1,8 +1,7 @@
 from flask import Flask, render_template, request
 import os
 import pandas as pd
-import time
-from scipy.stats import trim_mean
+
 
 
 app = Flask(__name__)

@@ -1,16 +1,9 @@
-/** {
-    margin:0;
-    padding: 0;
-    box-sizing: border-box;
-}
-*/
-
 body {
     background: linear-gradient(to bottom, #20eb42, #05301acc);
     color: #092209;
-    
+    background-attachment: fixed;
     font-family: "Century Gothic", sans-serif;
-
+    background-repeat: no-repeat;
 }
 
 nav {
