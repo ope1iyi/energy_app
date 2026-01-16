@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, flash, redirect
 import os
 import pandas as pd
 
 
 
 app = Flask(__name__)
+app.secret_key = 'Ecowatt'
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDERS = os.path.join(BASE_DIR,'uploads')
 os.makedirs(UPLOAD_FOLDERS, exist_ok=True)
@@ -33,22 +34,34 @@ def home():
             file_path = os.path.join(UPLOAD_FOLDERS, file.filename)
             file.save(file_path)
 
-            if file.filename.endswith(".xls"): 
-                df = pd.read_csv(file_path, sep='\t', usecols=COLUMN_MAPPING.keys())
-                print(f"{file.filename} uploaded sucessfully!!")
-                
-            elif file.filename.endswith(".xlsx"):
-                df = pd.read_excel(file_path, usecols=COLUMN_MAPPING.keys())
-                print(f"{file.filename} uploaded sucessfully!!")
-            else:
-                ...
+            try: 
+                if file.filename.endswith(".xls"): 
+                    df = pd.read_csv(file_path, sep='\t', usecols=COLUMN_MAPPING.keys())
+                    print(f"{file.filename} uploaded successfully!!")
+                    
+                elif file.filename.endswith(".xlsx"):
+                    df = pd.read_excel(file_path, usecols=COLUMN_MAPPING.keys())
+                    print(f"{file.filename} uploaded successfully!!")
+                else:
+                    flash("Unsupported file format. " \
+                    "Please upload a .xls or .xls file that has not been worked on")
+                    return redirect(request.url)
+                table_result = create_columns(df=df)
+                #create_column function will come first, to create the necessary fetures needed
+                intro = overview(df=df)
 
-            table_result = create_columns(df=df)
-            #create_column function will come first, to create the necessary fetures needed
-            intro = overview(df=df)
-
-            energy_summary = daily_energy_summary(data=df)
-
+                energy_summary = daily_energy_summary(data=df)
+            except (ValueError, pd.errors.OutOfBoundsDatetime, KeyError) as e:
+                os.remove(file_path)
+                flash('Error: This data is not cleaned.' \
+                'it contains incorrect format')
+                return redirect(request.url)
+            except Exception as e:
+                os.remove(file_path)
+                app.logger.error(f"Error processing file {file.filename}: {e}")
+                flash("An error occurred. Upload a clean exported file")
+                return redirect(request.url)
+            
     return render_template('index.html', result=table_result, energy_summary=energy_summary, intro=intro)
 
 
@@ -99,7 +112,10 @@ def daily_energy_summary(data: pd.DataFrame)-> str:
     return summary_text
     
 def night_consumption(df: pd.DataFrame)->pd.DataFrame:
-    df.groupby(['day','hour'])
+    day_mask = (df['hour'] >= 9) & (df['hour'] <= 17)
+    night_mask = (df['hour'] >= 18) | (df['hour'] < 6)
+    night_df = df[night_mask]
+    day_df = df[day_mask]
     ...
 
 if __name__ == '__main__':
