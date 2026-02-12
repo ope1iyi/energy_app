@@ -27,14 +27,18 @@ def home():
     intro=None
     table_result = None
     energy_summary = None
+    night_summary = None
     if request.method == 'POST':
+        print('stage 1') #debug
         #Get file from request
         file = request.files['file']
+        print('stage 11')#debug
         if file:
             file_path = os.path.join(UPLOAD_FOLDERS, file.filename)
             file.save(file_path)
-
+            print('stage 111')#debug
             try: 
+                print('stage 1111')#debug
                 if file.filename.endswith(".xls"): 
                     df = pd.read_csv(file_path, sep='\t', usecols=COLUMN_MAPPING.keys())
                     print(f"{file.filename} uploaded successfully!!")
@@ -43,20 +47,23 @@ def home():
                     df = pd.read_excel(file_path, usecols=COLUMN_MAPPING.keys())
                     print(f"{file.filename} uploaded successfully!!")
                 else:
+                    print('something 1')#debug
                     flash("Unsupported file format. " \
                     "Please upload a .xls or .xls file that has not been worked on")
                     return redirect(request.url)
-                table_result = create_columns(df=df)
-                #create_column function will come first, to create the necessary fetures needed
+                table_result = create_columns(df=df)  #create_column function will come first, to create the necessary fetures needed
                 intro = overview(df=df)
 
                 energy_summary = daily_energy_summary(data=df)
+                night_summary = night_consumption(df=df)
             except (ValueError, pd.errors.OutOfBoundsDatetime, KeyError) as e:
                 os.remove(file_path)
+                print('something 2', e)#debug
                 flash('Error: This data is not cleaned.' \
                 'it contains incorrect format')
                 return redirect(request.url)
             except Exception as e:
+                print('something 3',e)#debug
                 os.remove(file_path)
                 app.logger.error(f"Error processing file {file.filename}: {e}")
                 flash("An error occurred. Upload a clean exported file")
@@ -104,19 +111,27 @@ def daily_energy_summary(data: pd.DataFrame)-> str:
     daily_sum = data.resample('D', on='start_time')[['Energy_kWh']].sum().round(2).reset_index().set_index('start_time')
     total_sum = round(data['Energy_kWh'].sum(), 2)
 
-    summary_text = f"""
+    return f"""
     <h3>SUM OF DAILY ENERGY FOR DAYS LOGGED</h3>
     {daily_sum.to_html(classes="table table-bordered")}
     <p><b>Total energy for days logged: </b>{total_sum} kWh</p>
     """
-    return summary_text
     
-def night_consumption(df: pd.DataFrame)->pd.DataFrame:
+def night_consumption(df: pd.DataFrame):
     day_mask = (df['hour'] >= 9) & (df['hour'] <= 17)
     night_mask = (df['hour'] >= 18) | (df['hour'] < 6)
     night_df = df[night_mask]
     day_df = df[day_mask]
-    ...
+    
+    day_energy = day_df.groupby('day')[['Energy_kWh']].sum().round(2)
+    avg_day_energy = day_df.groupby('day')[['Energy_kWh']].mean().round(2)
+    consumption = f"""
+    <h3>NIGHT CONSUMPTION</h3>
+    {day_energy.to_html(classes="table tabe-bordered")}
+    Average day energy consumption {avg_day_energy} 
+
+    """
+    return consumption
 
 if __name__ == '__main__':
     app.run(debug=True)

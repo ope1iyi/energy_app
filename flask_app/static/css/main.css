@@ -11,10 +11,15 @@ nav {
     font-weight: 600;
 }
 
-.navbar h1 {
-    font-size: 1.4rem;
+nav h1 {
+    text-align: center;
+    font-size: 1.9rem;
     font-weight: 600;
-    position: fixed;
+}
+
+nav form {
+    text-align: center;
+    font-size: larger;
 }
 
 .btn, input{

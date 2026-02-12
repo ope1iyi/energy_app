@@ -41,5 +41,11 @@
             {{ energy_summary|safe  }}
         {% endif %}
     </div>
+    <div class="night-table">
+        <h2>Night Table</h2>
+        {% if night_summary %}
+            {{ night_summary | safe }}
+        {% endif %}
+    </div>
 </body>
 </html>
