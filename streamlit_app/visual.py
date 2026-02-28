@@ -13,6 +13,7 @@ COLUMN_MAPPING = {
     "PowerS_Total_max": "peak_apparent_power_kVA",
     "TotalActiveEnergyForward_avg": "Energy_kWh",
     "PowerS_Total_avg": "avg_apparent_power_kVA"
+
 }
 
 
