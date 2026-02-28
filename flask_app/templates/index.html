@@ -11,9 +11,9 @@
         <h1>Energy Analytics</h1>
         <form method="POST" class="navbar-form" enctype="multipart/form-data">
 
+            <input type="file" name="file" id="file" accept=".xls,.xlsx">
             <label for="file">
                 Choose file
-                <input type="file" name="file" id="file" value="upload"><br/>
             </label>
             <button type="submit" class="btn"> Process Analytics</button>
 
@@ -42,10 +42,18 @@
         {% endif %}
     </div>
     <div class="night-table">
-        <h2>Night Table</h2>
         {% if night_summary %}
             {{ night_summary | safe }}
         {% endif %}
     </div>
+    <div class="day-table">
+        {% if day_summary %}
+            {{ day_summary | safe }}
+        {% endif %}
+    </div>
+
+    <script src="{{url_for('static', filename='js/main.js')}}">
+
+    </script>
 </body>
 </html>
