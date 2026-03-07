@@ -18,7 +18,8 @@ COLUMN_MAPPING = {
     "PowerP_Total_avg": "avg_power_kW",
     "PowerP_Total_max":"peak_power_kW",
     "PowerS_Total_max": "peak_apparent_power_kVA",
-    "TotalActiveEnergyForward_avg": "Energy_kWh"
+    "TotalActiveEnergyForward_avg": "Energy_kWh",
+    "PowerS_Total_avg": "avg_apparent_power_kVA"
 }
 
 @app.route('/', methods=['GET', 'POST'])
@@ -84,6 +85,7 @@ def create_columns(df: pd.DataFrame)-> pd.DataFrame:
     df['avg_power_kW'] = df['avg_power_kW'] / 1000
     df['peak_power_kW'] = df['peak_power_kW'] / 1000
     df['peak_apparent_power_kVA'] = df['peak_apparent_power_kVA']/1000
+    df['avg_apparent_power_kVA'] = df['avg_apparent_power_kVA'] / 1000
     df["Energy_kWh"] = df["Energy_kWh"] / 1000
     df['hour'] = df['stop_time'].dt.hour
     df['day'] = df['stop_time'].dt.day
@@ -121,6 +123,17 @@ def overview(df: pd.DataFrame)-> str:
     """
     return text
 
+def daily_power_summary(data: pd.DataFrame)-> str:
+    '''Daily energy sum'''
+    daily_peak_sum = data.resample('D', on='start_time')[['peak_power_kW']].sum().round(2).reset_index().set_index('start_time')
+    daily_avg_sum = data.resample('D', on='start_time')[['avg_power_kW']].sum().round(2).reset_index().set_index('start_time')
+    total_sum = round(data['Energy_kWh'].sum(), 2)
+
+    return f"""
+    <h3>SUM OF DAILY ENERGY FOR DAYS LOGGED</h3>
+    {daily_peak_sum.to_html(classes="table table-bordered")}
+    <p><b>Total energy for days logged: </b>{total_sum} kWh</p>
+    """
 
 
 def daily_energy_summary(data: pd.DataFrame)-> str:
@@ -183,8 +196,11 @@ def trimmed_power_factor(df: pd.DataFrame, min_apparent_kva: float = 0.0) -> flo
     active = df[df['peak_apparent_power_kVA'] >= min_apparent_kva].copy()
     if active.empty:
         return float('nan')
-    pf_series = (active['avg_power_kW'] / active['peak_apparent_power_kVA']).clip(upper=1.0)
-    return round(pf_series.mean(), 3)
+    total_kw = active['avg_power_kW'].sum()
+    total_kva = active['avg_apparent_power_kVA'].sum()
+    
+    system_pf = total_kw / total_kva
+    return round(min(system_pf, 1.0), 2)
 
 if __name__ == '__main__':
     app.run(debug=True)
