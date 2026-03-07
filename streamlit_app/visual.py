@@ -84,7 +84,7 @@ def show_overview(df: pd.DataFrame):
     peak_power   = round(df['peak_power_kW'].max(), 2)
     total_energy = round(df['Energy_kWh'].sum(), 2)
     pf           = trimmed_power_factor(df)
-    pf_display   = f"{pf:.3f}" if pf == pf else "N/A"
+    pf_display   = f"{pf:.2f}" if pf == pf else "N/A"
 
     st.subheader("📋 Overview")
     st.caption(
@@ -103,7 +103,7 @@ def show_overview(df: pd.DataFrame):
         if pf >= 0.95:
             st.success(f"Power factor {pf_display} — Excellent (≥ 0.95)")
         elif pf >= 0.85:
-            st.warning(f"Power factor {pf_display} — Acceptable (0.85–0.94)")
+            st.warning(f"Power factor {pf_display} — Acceptable (0.85-0.94)")
         else:
             st.error(f"Power factor {pf_display} — Poor (< 0.85), consider correction")
 
@@ -125,7 +125,7 @@ def show_daily_energy_summary(df: pd.DataFrame):
 
 
 def show_day_consumption(df: pd.DataFrame):
-    """Day hours 06:00–17:59 breakdown."""
+    """Day hours 06:00-17:59 breakdown."""
     st.subheader("☀️ Day Consumption (06:00 – 17:59)")
 
     day_df = df[(df['hour'] >= 6) & (df['hour'] <= 17)]
@@ -175,22 +175,57 @@ def show_night_consumption(df: pd.DataFrame):
 
     st.dataframe(night_energy, width='stretch')
 
-def daily_power_summary(data: pd.DataFrame)-> str:
-    '''Daily Power Summary'''
-    st.subheader("Peak power, Average power per days logged")
-    daily_power = data.resample('D', on='start_time')[['peak_power_kW']].max().round(2).reset_index().set_index('start_time')
-    daily_avg_sum = data.resample('D', on='start_time').agg({'avg_power_kW':'mean',
-                                                                'peak_power_kW': 'max'})
+def daily_power_summary(data: pd.DataFrame):
+    """Daily power summary: max 15-min demand, average power, and peak apparent power per day."""
+    st.subheader("📊 Daily Power Summary")
 
-    max_power = (
-        data.resample('15min', on='start_time')[['avg_power_kW']]
-        .max()
+    power_15min = (
+        data.set_index('start_time')['peak_power_kW']
+        .resample('15min')
+        .mean()
+        .rename('max_15min_kW')
+    )
+
+  
+    max_power_daily = (
+        power_15min
         .resample('D')
-        .max().rename(columns={'avg_power_kW': 'Max Power (kW)'}))
-    # max_power[] = max_power[].dt.strftime('%a, %d %b %Y')
-    st.dataframe(max_power)
-    st.info(f"")
+        .max()
+        .rename('Max 15-min Power (kW)')
+    )
 
+    daily_rest = (
+        data.resample('D', on='stop_time')
+        .agg(
+            avg_power_kW            = ('avg_power_kW',  'mean'),
+            peak_power_kVA          = ('peak_power_kW', 'max'),
+            peak_power_kW           = ('peak_power_kW',  'max')
+        )
+        .round(2)
+    )
+
+    summary = (
+        daily_rest
+        .join(max_power_daily)
+        .round(2)
+        .reset_index()
+        .rename(columns={
+            'stop_time':      'Date',
+            'avg_power_kW':   'Avg Power (kW)',
+            'peak_power_kW':  'Peak Power (kW)',
+        })
+        [['Date', 'Max 15-min Power (kW)', 'Avg Power (kW)', 'Peak Power (kW)']]
+    )
+    summary['Date'] = summary['Date'].dt.strftime('%a, %d %b %Y')
+
+    st.dataframe(summary, width='stretch', hide_index=True)
+
+    overall_max = round(max_power_daily.max(), 2)
+    overall_avg = round(data['avg_power_kW'].mean(), 2)
+    st.info(
+        f"Overall max 15-min demand: **{overall_max} kW** &nbsp;|&nbsp; "
+        f"Overall average power: **{overall_avg} kW**"
+    )
 def show_voltage_current(df: pd.DataFrame):
     """Interactive voltage and current charts — user picks which lines to plot."""
     st.subheader("🔌 Voltage & Current Profile")
@@ -382,8 +417,6 @@ if uploaded_file:
         st.markdown("---")
         show_overview(df)
 
-        st.markdown("---")
-        show_voltage_current(df)
 
         st.markdown("---")
         with st.expander("🔍 First 5 rows of processed data", expanded=False):
@@ -400,6 +433,10 @@ if uploaded_file:
 
         st.markdown("---")
         show_night_consumption(df)
+
+        
+        st.markdown("---")
+        show_voltage_current(df)
 
     except KeyError as e:
         st.error(f"Column not found: {e}. Make sure this is a raw Fluke export file.")
