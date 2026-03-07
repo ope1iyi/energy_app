@@ -407,6 +407,95 @@ def show_voltage_current(df: pd.DataFrame):
             st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
 
 
+
+def show_avg_power(df: pd.DataFrame):
+    """Plot average power (avg_power_kW) over time with daily peak markers."""
+    st.subheader("⚡ Average Power over Time")
+
+    if 'avg_power_kW' not in df.columns:
+        st.warning("avg_power_kW column not found in data.")
+        return
+
+    # ── Controls ──────────────────────────────────────────────────────────────
+    col1, col2 = st.columns(2)
+    with col1:
+        show_peak = st.checkbox("Mark daily peak", value=True,
+                                help="Highlights the highest power reading each day")
+    with col2:
+        show_rolling = st.checkbox("Show 1-hour rolling average", value=False,
+                                   help="Smooths out short spikes to show the trend")
+
+    # ── Build chart ───────────────────────────────────────────────────────────
+    fig = go.Figure()
+
+    # Main avg power line
+    fig.add_trace(go.Scatter(
+        x=df['start_time'],
+        y=df['avg_power_kW'],
+        name='Avg Power',
+        line=dict(color="#00e5a0", width=1.5),
+        hovertemplate="<b>Avg Power</b><br>%{x|%d %b %H:%M}<br>%{y:.2f} kW<extra></extra>",
+    ))
+
+    # Optional 1-hour rolling average (window = 4 × 15-min intervals)
+    if show_rolling:
+        rolling = df.set_index('start_time')['avg_power_kW'].rolling('1h').mean().reset_index()
+        fig.add_trace(go.Scatter(
+            x=rolling['start_time'],
+            y=rolling['avg_power_kW'],
+            name='1-hr Rolling Avg',
+            line=dict(color="#ffb347", width=2, dash='dot'),
+            hovertemplate="<b>1-hr Avg</b><br>%{x|%d %b %H:%M}<br>%{y:.2f} kW<extra></extra>",
+        ))
+
+    # Daily peak markers
+    if show_peak:
+        daily_peaks = (
+            df.groupby(df['start_time'].dt.date)
+            .apply(lambda g: g.loc[g['avg_power_kW'].idxmax()])
+            .reset_index(drop=True)
+        )
+        fig.add_trace(go.Scatter(
+            x=daily_peaks['start_time'],
+            y=daily_peaks['avg_power_kW'],
+            mode='markers',
+            name='Daily Peak',
+            marker=dict(color="#ff5c8a", size=9, symbol='diamond',
+                        line=dict(color='white', width=1)),
+            hovertemplate="<b>Daily Peak</b><br>%{x|%d %b %H:%M}<br>%{y:.2f} kW<extra></extra>",
+        ))
+
+    overall_avg = round(df['avg_power_kW'].mean(), 2)
+    fig.add_hline(
+        y=overall_avg,
+        line_dash="dash",
+        line_color="rgba(255,255,255,0.25)",
+        annotation_text=f"Overall avg {overall_avg} kW",
+        annotation_position="bottom right",
+    )
+
+    fig.update_layout(
+        xaxis_title="Time",
+        yaxis_title="Power (kW)",
+        paper_bgcolor="#0d0f14",
+        plot_bgcolor="#151820",
+        font=dict(color="#e8ecf4"),
+        legend=dict(bgcolor="rgba(0,0,0,0)"),
+        hovermode="x unified",
+        height=420,
+        margin=dict(t=20, b=40, l=60, r=20),
+    )
+    fig.update_xaxes(gridcolor="#2a2f42")
+    fig.update_yaxes(gridcolor="#2a2f42")
+    st.plotly_chart(fig, width='stretch')
+
+    # ── Stats row ─────────────────────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Overall Avg Power",  f"{overall_avg} kW")
+    c2.metric("Max Avg Power",     f"{round(df['avg_power_kW'].max(), 2)} kW")
+    c3.metric("Min Power",          f"{round(df['avg_power_kW'].min(), 2)} kW")
+    c4.metric("Std Dev",            f"{round(df['avg_power_kW'].std(), 2)} kW")
+
 # ── Main app ───────────────────────────────────────────────────────────────────
 
 st.title("⚡ Energy Insight Pro")
@@ -441,10 +530,12 @@ if uploaded_file:
 
         st.markdown("---")
         show_night_consumption(df)
-
         
         st.markdown("---")
         show_voltage_current(df)
+
+        st.markdown("---")
+        show_avg_power(df)
 
     except KeyError as e:
         st.error(f"Column not found: {e}. Make sure this is a raw Fluke export file.")
