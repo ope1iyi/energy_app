@@ -48,7 +48,7 @@ def load_and_prepare(uploaded_file) -> pd.DataFrame:
     df['avg_apparent_power_kVA'] = df['avg_apparent_power_kVA'] / 1000
     df['Energy_kWh']              = df['Energy_kWh'] / 1000
     df['hour']                    = df['stop_time'].dt.hour
-    df['day']                     = df['stop_time'].dt.day
+    df['date']                    = df['stop_time'].dt.normalize()  # full date, not just day-of-month
 
     return df
 
@@ -126,18 +126,22 @@ def show_daily_energy_summary(df: pd.DataFrame):
 
 def show_day_consumption(df: pd.DataFrame):
     """Day hours 06:00-17:59 breakdown."""
-    st.subheader("☀️ Day Consumption (06:00 – 17:59)")
+    st.subheader("☀️ Day Consumption (09:00 – 17:59)")
 
-    day_df = df[(df['hour'] >= 6) & (df['hour'] <= 17)]
+    day_df = df[(df['hour'] >= 9) & (df['hour'] <= 17)]
 
     day_energy = (
-        day_df.groupby('day')[['Energy_kWh']]
+        day_df.groupby('date')[['Energy_kWh']]
         .sum().round(2)
         .rename(columns={'Energy_kWh': 'Total Energy (kWh)'})
+        .reset_index()
+        .sort_values('date')
+        .rename(columns={'date': 'Date'})
     )
+    day_energy['Date'] = day_energy['Date'].dt.strftime('%a, %d %b %Y')
 
     total_day = round(day_df['Energy_kWh'].sum(), 2)
-    avg_day   = round(total_day / day_df['day'].nunique(), 2) if day_df['day'].nunique() else 0
+    avg_day   = round(total_day / day_df['date'].nunique(), 2) if day_df['date'].nunique() else 0
     peak_day  = round(day_df['peak_power_kW'].max(), 2)
     day_pf    = trimmed_power_factor(day_df)
 
@@ -151,19 +155,23 @@ def show_day_consumption(df: pd.DataFrame):
 
 
 def show_night_consumption(df: pd.DataFrame):
-    """Night hours 18:00–05:59 breakdown."""
-    st.subheader("🌙 Night Consumption (18:00 – 05:59)")
+    """Night hours 18:00-05:59 breakdown."""
+    st.subheader("🌙 Night Consumption (18:00 - 05:59)")
 
     night_df = df[(df['hour'] >= 18) | (df['hour'] < 6)]
 
     night_energy = (
-        night_df.groupby('day')[['Energy_kWh']]
+        night_df.groupby('date')[['Energy_kWh']]
         .sum().round(2)
         .rename(columns={'Energy_kWh': 'Total Energy (kWh)'})
+        .reset_index()
+        .sort_values('date')
+        .rename(columns={'date': 'Date'})
     )
+    night_energy['Date'] = night_energy['Date'].dt.strftime('%a, %d %b %Y')
 
     total_night = round(night_df['Energy_kWh'].sum(), 2)
-    avg_night   = round(total_night / night_df['day'].nunique(), 2) if night_df['day'].nunique() else 0
+    avg_night   = round(total_night / night_df['date'].nunique(), 2) if night_df['date'].nunique() else 0
     peak_night  = round(night_df['peak_power_kW'].max(), 2)
     night_pf    = trimmed_power_factor(night_df)
 
