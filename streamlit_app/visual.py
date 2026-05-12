@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import datetime as dt
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -35,9 +36,18 @@ COLUMN_MAPPING = {
 def load_and_prepare(uploaded_file) -> pd.DataFrame:
     """Read file, rename columns, convert units, add helper columns."""
     if uploaded_file.name.endswith(".xls"):
-        df = pd.read_csv(uploaded_file, sep='\t', usecols=COLUMN_MAPPING.keys())
+        try:
+            df = pd.read_csv(uploaded_file, sep='\t', usecols=COLUMN_MAPPING.keys())
+        except Exception as e:
+            st.warning(f"Encountered an error with the columns, upload an excel file from fluke")
+    elif uploaded_file.name.endswith(".xlsx"):
+        try:
+            df = pd.read_excel(uploaded_file, usecols=COLUMN_MAPPING.keys())
+        except Exception as e:
+            return st.error(f"Encountered an error with the columns.\
+                     Ensure this is a raw Fluke export excel file")
     else:
-        df = pd.read_excel(uploaded_file, usecols=COLUMN_MAPPING.keys())
+        st.warning("Upload a fluke file, please")
 
     df.rename(columns=COLUMN_MAPPING, inplace=True)
     df['start_time']              = pd.to_datetime(df['start_time'])
@@ -47,11 +57,10 @@ def load_and_prepare(uploaded_file) -> pd.DataFrame:
     df['peak_apparent_power_kVA'] = df['peak_apparent_power_kVA'] / 1000
     df['avg_apparent_power_kVA'] = df['avg_apparent_power_kVA'] / 1000
     df['Energy_kWh']              = df['Energy_kWh'] / 1000
-    df['hour']                    = df['stop_time'].dt.hour
+    df['hour']                    = df['stop_time'].dt.time
     df['date']                    = df['stop_time'].dt.normalize()  # full date, not just day-of-month
 
     return df
-
 
 # ── Power factor ───────────────────────────────────────────────────────────────
 
@@ -93,8 +102,8 @@ def show_overview(df: pd.DataFrame):
     )
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Average Power",       f"{avg_power} kW")
-    col2.metric("Peak Power",          f"{peak_power} kW")
+    col1.metric("Average Active Power",       f"{avg_power} kW")
+    col2.metric("Peak Active Power",          f"{peak_power} kW")
     col3.metric("Total Energy",        f"{total_energy} kWh")
     col4.metric("Trimmed Power Factor", pf_display)
 
@@ -125,10 +134,10 @@ def show_daily_energy_summary(df: pd.DataFrame):
 
 
 def show_day_consumption(df: pd.DataFrame):
-    """Day hours 06:00-17:59 breakdown."""
-    st.subheader("☀️ Day Consumption (09:00 – 17:59)")
+    """Day hours 09:00-17:00 breakdown."""
+    st.subheader("☀️ Day Consumption (09:00 – 17:00)")
 
-    day_df = df[(df['hour'] >= 9) & (df['hour'] <= 17)]
+    day_df = df[(df['hour'] >= dt.time(9,0,0)) & (df['hour'] <= dt.time(17,0,0))]
 
     day_energy = (
         day_df.groupby('date')[['Energy_kWh']]
@@ -156,17 +165,21 @@ def show_day_consumption(df: pd.DataFrame):
 
 def show_night_consumption(df: pd.DataFrame):
     """Night hours 18:00-05:59 breakdown."""
-    st.subheader("🌙 Night Consumption (18:00 - 05:59)")
+    st.subheader("🌙 Night Consumption (18:00 - 05:59 next day)")
 
-    night_df = df[(df['hour'] >= 18) | (df['hour'] < 6)]
+    night_df = df[(df['hour'] >= dt.time(18,0,0)) | (df['hour'] < dt.time(6,0,0))].copy()
+
+    early_morning = night_df['hour'] < dt.time(6, 0, 0)
+    night_df['night_date'] = night_df['date']
+    night_df.loc[early_morning, 'night_date'] = night_df.loc[early_morning, 'date'] - pd.Timedelta(days=1)
 
     night_energy = (
-        night_df.groupby('date')[['Energy_kWh']]
+        night_df.groupby('night_date')[['Energy_kWh']]
         .sum().round(2)
         .rename(columns={'Energy_kWh': 'Total Energy (kWh)'})
         .reset_index()
-        .sort_values('date')
-        .rename(columns={'date': 'Date'})
+        .sort_values('night_date')
+        .rename(columns={'night_date': 'Date'})
     )
     night_energy['Date'] = night_energy['Date'].dt.strftime('%a, %d %b %Y')
 
@@ -183,21 +196,19 @@ def show_night_consumption(df: pd.DataFrame):
 
     st.dataframe(night_energy, width='stretch')
 
-def daily_power_summary(data: pd.DataFrame):
+def daily_power_summary(data: pd.DataFrame):    
     """Daily power summary: max 15-min demand, average power, and peak apparent power per day."""
     st.subheader("📊 Daily Power Summary")
 
     power_15min = (
-        data.set_index('start_time')['peak_power_kW']
-        .resample('15min')
+        data.set_index('stop_time')['peak_power_kW']
+        .rolling(window='15min')
         .mean()
         .rename('max_15min_kW')
     )
-
   
     max_power_daily = (
-        power_15min
-        .resample('D')
+        power_15min.resample('D')
         .max()
         .rename('Max 15-min Power (kW)')
     )
@@ -206,7 +217,7 @@ def daily_power_summary(data: pd.DataFrame):
         data.resample('D', on='stop_time')
         .agg(
             avg_power_kW            = ('avg_power_kW',  'mean'),
-            peak_power_kVA          = ('peak_power_kW', 'max'),
+            peak_power_kVA          = ('peak_apparent_power_kVA', 'max'),
             peak_power_kW           = ('peak_power_kW',  'max')
         )
         .round(2)
@@ -221,8 +232,9 @@ def daily_power_summary(data: pd.DataFrame):
             'stop_time':      'Date',
             'avg_power_kW':   'Avg Power (kW)',
             'peak_power_kW':  'Peak Power (kW)',
+            'peak_power_kVA': 'Peak Power (kVA)'
         })
-        [['Date', 'Max 15-min Power (kW)', 'Avg Power (kW)', 'Peak Power (kW)']]
+        [['Date', 'Max 15-min Power (kW)', 'Avg Power (kW)', 'Peak Power (kW)', 'Peak Power (kVA)']]
     )
     summary['Date'] = summary['Date'].dt.strftime('%a, %d %b %Y')
 
@@ -393,20 +405,59 @@ def show_voltage_current(df: pd.DataFrame):
         st.plotly_chart(fig_i, width='stretch')
 
     # ── Voltage stats for selected lines only ─────────────────────────────────
-    with st.expander("📊 Voltage statistics — selected lines"):
-        rows = []
+    with st.expander("📊 Voltage & Current statistics — selected lines", expanded=True):
+
+        # Voltage rows: Avg, Min, Max, Avg-of-Max, Std Dev
+        volt_rows = []
         for label, avg_col, min_col, max_col in chosen_volt:
-            rows.append({
-                "Line":        label,
-                "Avg (V)":     round(df[avg_col].mean(), 2),
-                "Min (V)":     round(df[min_col].min(), 2) if min_col in df.columns else "—",
-                "Max (V)":     round(df[max_col].max(), 2) if max_col in df.columns else "—",
-                "Std Dev (V)": round(df[avg_col].std(), 2),
+            volt_rows.append({
+                "Line":           label,
+                "Avg V":          round(df[avg_col].mean(), 2)          if avg_col in df.columns else None,
+                "Min V":          round(df[min_col].min(), 2)           if min_col in df.columns else None,
+                "Max V":          round(df[max_col].max(), 2)           if max_col in df.columns else None,
+                # "Avg of Max V":   round(df[max_col].mean(), 2)          if max_col in df.columns else None,
+                "Std Dev V":      round(df[avg_col].std(), 2)           if avg_col in df.columns else None,
             })
-        if rows:
-            st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
 
+        if volt_rows:
+            st.markdown("**Voltage statistics**")
+            st.dataframe(pd.DataFrame(volt_rows), width='stretch', hide_index=True)
 
+        # Current rows: Avg, Min, Max — highlight row with lowest Max current
+        ALL_CURRENT_LINES_STAT = [
+            ("Phase A", "I_A_avg", "I_A_min", "I_A_max"),
+            ("Phase B", "I_B_avg", "I_B_min", "I_B_max"),
+            ("Phase C", "I_C_avg", "I_C_min", "I_C_max"),
+        ]
+        curr_rows = []
+        for label, avg_col, min_col, max_col in ALL_CURRENT_LINES_STAT:
+            if avg_col not in df.columns:
+                continue
+            curr_rows.append({
+                "Phase":      label,
+                "Avg (A)":    round(df[avg_col].mean(), 2),
+                "Min (A)":    round(df[min_col].min(), 2) if min_col in df.columns else None,
+                "Max (A)":    round(df[max_col].max(), 2) if max_col in df.columns else None,
+                "Avg of Max (A)": round(df[max_col].mean(), 2) if max_col in df.columns else None,
+            })
+
+        if curr_rows:
+            st.markdown("**Current statistics** *(row with lowest Max current highlighted)*")
+            curr_df = pd.DataFrame(curr_rows)
+
+            # Find the phase with the lowest Max (A)
+            min_max_idx = curr_df["Max (A)"].idxmin()
+
+            def highlight_lowest_max(row):
+                if row.name == min_max_idx:
+                    return ["background-color: rgba(255,92,138,0.25); color: #ff5c8a; font-weight: bold"] * len(row)
+                return [""] * len(row)
+
+            st.dataframe(
+                curr_df.style.apply(highlight_lowest_max, axis=1),
+                width='stretch',
+                hide_index=True,
+            )
 
 def show_avg_power(df: pd.DataFrame):
     """Plot average power (avg_power_kW) over time with daily peak markers."""
@@ -514,7 +565,6 @@ if uploaded_file:
         st.markdown("---")
         show_overview(df)
 
-
         st.markdown("---")
         with st.expander("🔍 First 5 rows of processed data", expanded=False):
             st.dataframe(df.head())
@@ -540,4 +590,4 @@ if uploaded_file:
     except KeyError as e:
         st.error(f"Column not found: {e}. Make sure this is a raw Fluke export file.")
     except Exception as e:
-        st.error(f"Error processing file: {e}")
+        st.error(f"Error processing file")
